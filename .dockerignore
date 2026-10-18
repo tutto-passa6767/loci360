@@ -1,0 +1,10 @@
+**/node_modules
+**/.next
+**/dist
+**/*.tsbuildinfo
+.env
+.env.*
+.git
+media-src
+tests/e2e/.artifacts
+.codebase-memory

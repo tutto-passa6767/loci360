@@ -1,0 +1,4 @@
+# Windows launcher must keep CRLF line endings
+*.cmd text eol=crlf
+# Shell scripts run inside Linux containers
+*.sh text eol=lf

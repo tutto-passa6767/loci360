@@ -1,0 +1,567 @@
+// LOCI360 data model.
+// Content is bilingual (EN — primary, RU — secondary): every visible text has an *En and *Ru column.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------- CMS users
+
+enum UserRole {
+  ADMIN // everything, including users and settings
+  EDITOR // content and leads
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String
+  passwordHash  String
+  role          UserRole  @default(EDITOR)
+  totpSecret    String?
+  totpEnabledAt DateTime?
+  blockedAt     DateTime?
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  sessions      Session[]
+  leadNotes     LeadNote[]
+  assignedLeads Lead[]     @relation("LeadAssignee")
+  assets        Asset[]
+}
+
+model Session {
+  id         String    @id // sha256 of the cookie token
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------- media
+
+enum AssetKind {
+  VIDEO
+  PHOTO
+  PANORAMA // equirectangular 360° photo
+}
+
+enum AssetState {
+  UPLOADING // multipart upload in progress
+  PENDING // waiting for the worker
+  RUNNING
+  READY
+  FAILED
+}
+
+model Asset {
+  id           String     @id @default(cuid())
+  kind         AssetKind
+  title        String // internal name shown in the media library
+  originalName String
+  originalKey  String     @unique // object key in the private originals bucket
+  size         BigInt
+  mime         String?
+  uploadId     String? // S3 multipart upload id while UPLOADING
+  partSize     Int?
+
+  width       Int?
+  height      Int?
+  durationSec Float?
+  credit      String? // "© Name / licence" — shown under the media
+  altEn       String?
+  altRu       String?
+  /// Burn the LOCI360 watermark into video renditions
+  watermark   Boolean @default(true)
+
+  state       AssetState @default(UPLOADING)
+  progress    Int        @default(0)
+  error       String?
+  attempts    Int        @default(0)
+  /// Processing revision: processed files live under a/{id}/{rev}/ so CDN caches never serve stale renditions
+  rev         Int        @default(0)
+  heartbeatAt DateTime?
+  retryAt     DateTime?
+  processedAt DateTime?
+  /// ffprobe / EXIF summary
+  meta        Json?
+  /// Keys of processed files in the media bucket (see apps/worker for the shape)
+  derived     Json?
+
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  locationMedia   LocationMedia[]
+  coverOf         Location[]       @relation("LocationCover")
+  ogOf            Location[]       @relation("LocationOg")
+  clusterCovers   Cluster[]
+  heroReels       HeroReel[]
+  pageOgs         Page[]
+  serviceLogos    ServiceCompany[]
+
+  @@index([state, retryAt])
+  @@index([kind, createdAt])
+}
+
+// ---------------------------------------------------------------- catalogue
+
+enum PublishStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+/// Regional clusters on the home page: Almaty (Alpine & Canyon), Mangystau (Desert & Sci-Fi), Astana (Futuristic & Cyberpunk)
+model Cluster {
+  id            String  @id @default(cuid())
+  slug          String  @unique
+  nameEn        String
+  nameRu        String
+  taglineEn     String
+  taglineRu     String
+  descriptionEn String?
+  descriptionRu String?
+  coverAssetId  String?
+  cover         Asset?  @relation(fields: [coverAssetId], references: [id], onDelete: SetNull)
+  lat           Float
+  lng           Float
+  zoom          Float   @default(6)
+  sort          Int     @default(0)
+
+  locations Location[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+enum TermKind {
+  GENRE // Sci-Fi, Western, Post-apocalyptic, Historical, Noir, Drama, Action…
+  LANDSCAPE // canyons, mountains, deserts, lakes, futurism, Soviet architecture, industrial…
+  ERA // historical periods the location can play
+  TAG // quick search tags: Mars, Charyn, Astana, Snow, Mountains, Retro
+}
+
+model Term {
+  id      String   @id @default(cuid())
+  kind    TermKind
+  slug    String
+  labelEn String
+  labelRu String
+  sort    Int      @default(0)
+
+  locations LocationTerm[]
+
+  @@unique([kind, slug])
+}
+
+/// Heavy equipment access (camera trucks, generators, cranes)
+enum HeavyAccess {
+  FULL // paved road to the site, trucks and trailers
+  LIMITED // gravel road or seasonal restrictions; trucks with care
+  OFFROAD // 4x4 only; equipment shuttled in
+  NONE // on foot / horseback / helicopter
+}
+
+enum Connectivity {
+  NONE
+  G2
+  G3
+  G4
+  G5
+}
+
+enum PowerSupply {
+  GRID // grid connection on site
+  NEARBY // grid within a few km
+  GENERATOR // generators only
+}
+
+enum DroneRule {
+  ALLOWED // standard registration
+  PERMIT // special permission required
+  RESTRICTED // no-fly zone or very hard to obtain
+}
+
+enum Season {
+  SPRING
+  SUMMER
+  AUTUMN
+  WINTER
+}
+
+model Location {
+  id     String        @id @default(cuid())
+  slug   String        @unique
+  status PublishStatus @default(DRAFT)
+
+  nameEn        String
+  nameRu        String
+  summaryEn     String // one line for cards
+  summaryRu     String
+  descriptionEn String  @default("")
+  descriptionRu String  @default("")
+  regionEn      String? // oblast / area
+  regionRu      String?
+
+  clusterId String?
+  cluster   Cluster? @relation(fields: [clusterId], references: [id], onDelete: SetNull)
+
+  // --- spec sheet: geography
+  lat        Float
+  lng        Float
+  elevationM Int?
+
+  // --- spec sheet: logistics
+  airportCode   String? // IATA
+  airportNameEn String?
+  airportNameRu String?
+  airportKm     Int? // road distance
+  driveHours    Float?
+  railStationEn String?
+  railStationRu String?
+  railKm        Int?
+  nearestTownEn String?
+  nearestTownRu String?
+  townKm        Int?
+  heavyAccess   HeavyAccess  @default(LIMITED)
+  accessNotesEn String?
+  accessNotesRu String?
+
+  // --- spec sheet: infrastructure
+  connectivity  Connectivity @default(G4)
+  power         PowerSupply  @default(GENERATOR)
+  hotelsEn      String?
+  hotelsRu      String?
+  hotelKm       Int?
+
+  // --- spec sheet: restrictions
+  nationalPark  Boolean   @default(false)
+  borderZone    Boolean   @default(false)
+  drone         DroneRule @default(ALLOWED)
+  permitNotesEn String?
+  permitNotesRu String?
+
+  // --- climate
+  seasons   Season[]
+  climateEn String?
+  climateRu String?
+  /// Monthly normals computed from reanalysis (see apps/api/src/public/climate.service.ts); null = not computed yet
+  climateMonthly Json?
+
+  featured Boolean @default(false)
+  sort     Int     @default(0)
+  /// Kept up to date by the API (apps/api/src/common/media-score.service.ts): the catalogue lists places with a 360° view first, then by photo quality
+  hasPanorama Boolean @default(false)
+  mediaScore  Float   @default(0)
+  panoramaEmbeds PanoramaEmbed[]
+
+  coverAssetId String?
+  cover        Asset?  @relation("LocationCover", fields: [coverAssetId], references: [id], onDelete: SetNull)
+
+  // --- SEO
+  seoTitleEn       String?
+  seoTitleRu       String?
+  seoDescriptionEn String?
+  seoDescriptionRu String?
+  ogAssetId        String?
+  og               Asset?  @relation("LocationOg", fields: [ogAssetId], references: [id], onDelete: SetNull)
+
+  /// Lower-cased names, summaries, region, cluster and term labels in both languages — for search
+  searchText String @default("")
+
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  terms LocationTerm[]
+  media LocationMedia[]
+  leads LeadLocation[]
+
+  @@index([status, sort])
+  @@index([clusterId])
+}
+
+model LocationTerm {
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  termId     String
+  term       Term     @relation(fields: [termId], references: [id], onDelete: Cascade)
+
+  @@id([locationId, termId])
+  @@index([termId])
+}
+
+enum MediaRole {
+  SHOWREEL // flagship 4K reel
+  BROLL // raw B-roll footage
+  PHOTO
+  PANORAMA // VR 360°
+}
+
+enum TimeOfDay {
+  DAY
+  GOLDEN_HOUR
+  NIGHT
+}
+
+model LocationMedia {
+  id         String     @id @default(cuid())
+  locationId String
+  location   Location   @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  assetId    String
+  asset      Asset      @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  role       MediaRole
+  timeOfDay  TimeOfDay?
+  /// Optional label, e.g. a grade / mood of the same reel ("Teal & orange", "Bleach bypass")
+  labelEn    String?
+  labelRu    String?
+  sort       Int        @default(0)
+
+  @@unique([locationId, assetId])
+  @@index([locationId, role, sort])
+}
+
+// ---------------------------------------------------------------- home page hero
+
+/// Genre moods of the full-screen hero: Western / Sci-Fi / Modern City / Fantasy
+model HeroReel {
+  id         String  @id @default(cuid())
+  key        String  @unique
+  labelEn    String
+  labelRu    String
+  assetId    String?
+  asset      Asset?  @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  /// Genre the "Explore" button filters the catalogue by
+  genreSlug  String?
+  /// Location the hero credits (shown as "Charyn Canyon · Almaty region")
+  locationSlug String?
+  sort       Int     @default(0)
+  active     Boolean @default(true)
+}
+
+// ---------------------------------------------------------------- leads (CRM-lite)
+
+enum LeadStatus {
+  NEW
+  IN_PROGRESS
+  PROPOSAL // options / quote sent
+  WON
+  LOST
+  SPAM
+}
+
+enum ProjectType {
+  FEATURE
+  SERIES
+  COMMERCIAL
+  MUSIC_VIDEO
+  DOCUMENTARY
+  OTHER
+}
+
+enum BudgetRange {
+  UNDER_500K
+  FROM_500K_TO_2M
+  FROM_2M_TO_10M
+  OVER_10M
+  UNDISCLOSED
+}
+
+/// REQUEST: the full scouting form; QUESTION: the short "ask the location manager" form (no company, project or budget)
+enum LeadKind {
+  REQUEST
+  QUESTION
+}
+
+model Lead {
+  id          String      @id @default(cuid())
+  number      Int         @unique @default(autoincrement())
+  kind        LeadKind    @default(REQUEST)
+  name        String
+  email       String
+  company     String
+  country     String // ISO 3166-1 alpha-2
+  phone       String?
+  projectType ProjectType
+  budget      BudgetRange
+  shootFrom   DateTime?
+  shootTo     DateTime?
+  message     String?
+  locale      String      @default("en")
+  sourcePath  String?
+  ip          String?
+  userAgent   String?
+
+  status     LeadStatus @default(NEW)
+  assigneeId String?
+  assignee   User?      @relation("LeadAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  locations LeadLocation[]
+  notes     LeadNote[]
+
+  @@index([status, createdAt])
+}
+
+model LeadLocation {
+  leadId     String
+  lead       Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@id([leadId, locationId])
+}
+
+enum LeadNoteKind {
+  NOTE
+  STATUS
+  ASSIGN
+}
+
+model LeadNote {
+  id        String       @id @default(cuid())
+  leadId    String
+  lead      Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  authorId  String?
+  author    User?        @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  kind      LeadNoteKind @default(NOTE)
+  body      String
+  createdAt DateTime     @default(now())
+
+  @@index([leadId, createdAt])
+}
+
+// ---------------------------------------------------------------- service companies registry
+
+enum ServiceCategory {
+  PRODUCTION_SERVICES
+  RENTAL
+  CATERING
+  CAST
+  TRANSPORT
+  ACCOMMODATION
+}
+
+model ServiceCompany {
+  id            String          @id @default(cuid())
+  name          String
+  category      ServiceCategory
+  cityEn        String
+  cityRu        String
+  descriptionEn String          @default("")
+  descriptionRu String          @default("")
+  website       String?
+  email         String?
+  phone         String?
+  logoAssetId   String?
+  logo          Asset?          @relation(fields: [logoAssetId], references: [id], onDelete: SetNull)
+  published     Boolean         @default(true)
+  sort          Int             @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([category, sort])
+}
+
+// ---------------------------------------------------------------- content pages
+
+/// Editable pages: why-kazakhstan, incentives, permits, privacy. Body is Markdown.
+model Page {
+  id               String   @id @default(cuid())
+  slug             String   @unique
+  titleEn          String
+  titleRu          String
+  leadEn           String   @default("")
+  leadRu           String   @default("")
+  bodyEn           String   @default("")
+  bodyRu           String   @default("")
+  seoTitleEn       String?
+  seoTitleRu       String?
+  seoDescriptionEn String?
+  seoDescriptionRu String?
+  ogAssetId        String?
+  og               Asset?   @relation(fields: [ogAssetId], references: [id], onDelete: SetNull)
+  published        Boolean  @default(true)
+  updatedAt        DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------- settings & audit
+
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model AuditEvent {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String
+  targetType String?
+  targetId   String?
+  meta       Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([targetType, targetId])
+}
+
+/// Anonymous daily counters behind the CMS statistics page: no cookies, no IP addresses, nothing that identifies a visitor
+model StatDaily {
+  /// Kazakhstan calendar day (UTC+5)
+  day    DateTime @db.Date
+  /// visit | view | location | pdf | shortlistPdf | request | reel | panorama | shortlist | ref | device | lang
+  metric String
+  /// what was counted: a path, a location slug, a referrer host, a device class; empty for plain totals
+  key    String   @default("")
+  count  Int      @default(0)
+
+  @@id([day, metric, key])
+  @@index([metric, day])
+}
+
+/// Newsletter: production news and incentive updates. Consent is given in the form; every email carries a one-click unsubscribe link (token)
+model Subscriber {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  locale         String    @default("en")
+  token          String    @unique
+  sourcePath     String?
+  createdAt      DateTime  @default(now())
+  unsubscribedAt DateTime?
+
+  @@index([createdAt])
+}
+
+/// A 360° view hosted by a panorama service (a 360Cities "Hosted Embed" licence, Kuula, Matterport…).
+/// Only the player URL is stored; the site loads it in an iframe after the visitor clicks
+model PanoramaEmbed {
+  id         String   @id @default(cuid())
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  src        String
+  labelEn    String?
+  labelRu    String?
+  credit     String?
+  sort       Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  @@index([locationId, sort])
+}

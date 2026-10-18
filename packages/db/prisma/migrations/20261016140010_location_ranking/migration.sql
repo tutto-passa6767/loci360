@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Location" ADD COLUMN     "hasPanorama" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "mediaScore" DOUBLE PRECISION NOT NULL DEFAULT 0;

@@ -1,0 +1,134 @@
+# LOCI360 local stack.
+#   npm run infra:up      — PostgreSQL, MinIO (S3), Mailpit
+#   npm run worker:up     — media worker (FFmpeg / libvips), polls the job table in PostgreSQL
+# API and web run on the host (`npm run dev:api`, `npm run dev:web`), or all-in-Docker with `--profile app`.
+
+name: loci360
+
+x-s3-env: &s3-env
+  S3_ENDPOINT: http://minio:9000
+  S3_REGION: ${S3_REGION}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+  S3_SECRET_KEY: ${S3_SECRET_KEY}
+  S3_BUCKET_ORIGINALS: ${S3_BUCKET_ORIGINALS}
+  S3_BUCKET_MEDIA: ${S3_BUCKET_MEDIA}
+
+services:
+  postgres:
+    # Locally cached PostgreSQL 16 image (PostGIS itself is not required)
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set in .env}
+    ports: ["127.0.0.1:${POSTGRES_PORT:-54360}:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      retries: 20
+
+  minio:
+    image: quay.io/minio/minio:latest
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set in .env}
+      # Browsers upload masters with presigned URLs and play HLS from the public bucket
+      MINIO_API_CORS_ALLOW_ORIGIN: "*"
+    ports:
+      - "127.0.0.1:${MINIO_PORT:-59360}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-59361}:9001"
+    volumes: [miniodata:/data]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      retries: 20
+
+  # Creates the private originals bucket and the public-read media bucket
+  minio-init:
+    image: quay.io/minio/mc:latest
+    depends_on:
+      minio: { condition: service_healthy }
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      ORIGINALS: ${S3_BUCKET_ORIGINALS}
+      MEDIA: ${S3_BUCKET_MEDIA}
+    entrypoint: ["/bin/sh", "/init/minio-init.sh"]
+    volumes: ["./infra/minio:/init:ro"]
+    restart: "no"
+
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${MAILPIT_SMTP_PORT:-51360}:1025"
+      - "127.0.0.1:${MAILPIT_UI_PORT:-58360}:8025"
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio: { condition: service_healthy }
+    environment:
+      <<: *s3-env
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-1}
+      X264_PRESET: ${X264_PRESET:-veryfast}
+      HLS_SEGMENT_SEC: ${HLS_SEGMENT_SEC:-4}
+      WORK_DIR: /work
+      # Fresh media shows up on the site at once (the web app runs on the host during development)
+      WEB_INTERNAL_URL: ${WORKER_WEB_URL:-http://host.docker.internal:3360}
+      REVALIDATE_SECRET: ${REVALIDATE_SECRET}
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    volumes: [workdir:/work]
+
+  api:
+    profiles: [app]
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio: { condition: service_healthy }
+    environment:
+      <<: *s3-env
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT}
+      MEDIA_PUBLIC_URL: ${MEDIA_PUBLIC_URL}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      APP_URL: ${APP_URL}
+      APP_SECRET: ${APP_SECRET}
+      API_PORT: 4360
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      MAIL_FROM: ${MAIL_FROM}
+      WEB_INTERNAL_URL: http://web:3360
+      REVALIDATE_SECRET: ${REVALIDATE_SECRET}
+    ports: ["127.0.0.1:${API_PORT:-4360}:4360"]
+
+  web:
+    profiles: [app]
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_MAP_STYLE_URL: ${NEXT_PUBLIC_MAP_STYLE_URL}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
+    restart: unless-stopped
+    depends_on: [api]
+    environment:
+      API_INTERNAL_URL: http://api:4360
+      REVALIDATE_SECRET: ${REVALIDATE_SECRET}
+    ports: ["127.0.0.1:3360:3360"]
+
+volumes:
+  pgdata: {}
+  miniodata: {}
+  workdir: {}

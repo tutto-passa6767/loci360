@@ -1,0 +1,367 @@
+@import 'tailwindcss';
+
+/*
+ * LOCI360 — dark cinematic theme (ТЗ: Dark Theme, minimalism, Apple / Netflix / DaVinci typography).
+ * Brand palette: black, crimson red, pure white, steel grey. The site is dark by design; there is no light theme.
+ */
+
+:root {
+  color-scheme: dark;
+  --bg: #000000;
+  --bg-2: #070707;
+  --surface: #0f0f0f;
+  --surface-2: #161616;
+  --surface-3: #1f1f1f;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --fg: #ffffff;
+  /* Steel grey: secondary text (contrast on black ≥ 10:1) */
+  --fg-muted: #b3b3b3;
+  --fg-subtle: #7d7d7d;
+  /* Fills under white text — brand crimson (contrast with white ≥ 4.5:1) */
+  --accent: #e61e32;
+  --accent-strong: #c41426;
+  /* Text, icons, outlines on black — a lighter crimson (contrast ≥ 6:1) */
+  --accent-bright: #ff5263;
+  --accent-soft: rgba(230, 30, 50, 0.14);
+  --accent-glow: rgba(230, 30, 50, 0.45);
+  --success: #3ddc97;
+  --success-soft: rgba(61, 220, 151, 0.13);
+  --warning: #f5b84a;
+  --warning-soft: rgba(245, 184, 74, 0.14);
+  --danger: #ff6b6b;
+  --danger-soft: rgba(255, 107, 107, 0.14);
+  --overlay: rgba(0, 0, 0, 0.72);
+  --shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  --header-h: 76px;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-2: var(--bg-2);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-bright: var(--accent-bright);
+  --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-inter-tight), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono-face), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+html {
+  background: var(--bg);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  min-height: 100dvh;
+}
+
+::selection {
+  background: var(--accent);
+  color: #fff;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@utility btn {
+  @apply inline-flex h-11 items-center justify-center gap-2 rounded-full px-5 text-sm font-medium whitespace-nowrap transition-[background,color,border-color,box-shadow,transform] duration-200 select-none disabled:pointer-events-none disabled:opacity-50;
+}
+/* Crimson pill with a soft glow and a lit top edge */
+@utility btn-primary {
+  @apply btn bg-[linear-gradient(180deg,#f2283c_0%,#d0172b_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_10px_34px_var(--accent-glow)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_12px_44px_rgba(230,30,50,0.65)] active:scale-[0.98];
+}
+@utility btn-light {
+  @apply btn bg-white text-black hover:bg-white/85 active:scale-[0.98];
+}
+@utility btn-ghost {
+  @apply btn border border-white/10 bg-[linear-gradient(180deg,#232323_0%,#151515_100%)] text-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] hover:border-white/20 hover:bg-[linear-gradient(180deg,#2b2b2b_0%,#1a1a1a_100%)];
+}
+@utility btn-sm {
+  @apply h-9 px-4 text-[13px];
+}
+/* Round white arrow at the end of a pill button */
+@utility btn-dot {
+  @apply flex size-8 shrink-0 items-center justify-center rounded-full bg-white text-black transition-transform duration-300 group-hover:rotate-45;
+}
+
+
+@utility input {
+  @apply h-11 w-full rounded-xl border border-border-strong bg-bg-2 px-3.5 text-sm text-fg placeholder:text-fg-subtle transition-colors outline-none hover:border-white/25 focus:border-accent-bright focus:ring-2 focus:ring-accent-soft disabled:opacity-60;
+}
+
+@layer components {
+  .container-x {
+    @apply mx-auto w-full max-w-[1440px] px-4 sm:px-6 lg:px-10;
+  }
+
+  .eyebrow {
+    @apply font-mono text-[11px] font-medium tracking-[0.18em] text-accent-bright uppercase;
+  }
+
+  /* Section label: a glass pill with a glowing crimson dot */
+  .tag {
+    @apply inline-flex h-8 items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3.5 text-[12.5px] font-medium text-white/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur;
+  }
+  .tag::before {
+    content: '';
+    @apply size-1.5 shrink-0 rounded-full bg-accent shadow-[0_0_10px_2px_var(--accent-glow)];
+  }
+
+  /* Large light grotesk with tight tracking; <span class="dim"> greys out the second half of a headline */
+  .display {
+    @apply font-display font-normal tracking-[-0.04em] text-balance;
+  }
+  .display .dim {
+    @apply text-white/45;
+  }
+  .display .hl {
+    @apply text-accent;
+  }
+
+  .chip {
+    @apply inline-flex h-7 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 text-xs font-medium text-fg-muted;
+  }
+
+  .card {
+    @apply rounded-3xl border border-white/[0.08] bg-[linear-gradient(180deg,#141414_0%,#0a0a0a_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)];
+  }
+
+  /* Frosted panel over photos and video */
+  .glass {
+    @apply rounded-3xl border border-white/10 bg-white/[0.05] shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_20px_50px_rgba(0,0,0,0.35)] backdrop-blur-xl;
+  }
+
+  /* Big number in a stat tile */
+  .stat {
+    @apply font-display text-5xl font-normal tracking-[-0.05em] text-white tabular-nums;
+  }
+
+  textarea.input {
+    @apply h-auto min-h-28 py-3 leading-relaxed;
+  }
+  select.input {
+    @apply cursor-pointer appearance-none bg-[length:16px] bg-[right_12px_center] bg-no-repeat pr-9;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a6abb6' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  }
+
+  .label {
+    @apply mb-1.5 block text-[13px] font-medium text-fg-muted;
+  }
+
+  .hairline {
+    @apply border-t border-border;
+  }
+
+  /* Markdown pages */
+  .prose-loci {
+    @apply max-w-[72ch] text-[17px] leading-[1.75] text-fg-muted;
+  }
+  .prose-loci > :first-child {
+    @apply mt-0;
+  }
+  .prose-loci h2 {
+    @apply font-display mt-14 mb-4 text-3xl font-normal tracking-[-0.03em] text-fg sm:text-4xl;
+  }
+  .prose-loci h3 {
+    @apply mt-10 mb-3 text-lg font-semibold text-fg;
+  }
+  .prose-loci p {
+    @apply my-4;
+  }
+  .prose-loci ul,
+  .prose-loci ol {
+    @apply my-4 space-y-2 pl-5;
+  }
+  .prose-loci ul {
+    @apply list-disc marker:text-accent-bright;
+  }
+  .prose-loci ol {
+    @apply list-decimal marker:font-mono marker:text-accent-bright;
+  }
+  .prose-loci strong {
+    @apply font-semibold text-fg;
+  }
+  .prose-loci a {
+    @apply text-accent-bright underline decoration-accent-bright/40 underline-offset-4 hover:decoration-accent-bright;
+  }
+  .prose-loci blockquote {
+    @apply my-8 rounded-2xl border border-accent/40 bg-accent-soft px-6 py-5 text-fg;
+  }
+  .prose-loci blockquote p {
+    @apply m-0;
+  }
+}
+
+/* Cinematic film grain over hero media */
+.grain::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.07;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Topographic placeholder for locations still waiting for media */
+.topo {
+  background-color: #0b0b0b;
+  background-image:
+    radial-gradient(120% 90% at 20% 10%, rgba(230, 30, 50, 0.32), transparent 60%),
+    radial-gradient(90% 70% at 90% 100%, rgba(255, 82, 99, 0.14), transparent 60%),
+    repeating-radial-gradient(circle at 30% 40%, transparent 0 14px, rgba(255, 255, 255, 0.045) 14px 15px);
+}
+
+/* Glowing crimson horizon: the lit edge of a wide ellipse bending over (or under) a section.
+   drop-shadow follows the drawn edge only, so the glow never rings the rest of the ellipse. */
+.horizon {
+  position: absolute;
+  left: 50%;
+  width: 160%;
+  aspect-ratio: 6 / 1;
+  translate: -50% 0;
+  border-radius: 50%;
+  pointer-events: none;
+  filter: drop-shadow(0 0 6px rgba(255, 75, 92, 0.9)) drop-shadow(0 0 28px rgba(230, 30, 50, 0.7));
+}
+.horizon-top {
+  top: 0;
+  border-top: 2px solid #ff4b5c;
+}
+.horizon-bottom {
+  bottom: 0;
+  border-bottom: 2px solid #ff4b5c;
+}
+/* Light spilling from the horizons into the section */
+.horizon-spill {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 38% at 50% 0%, rgba(230, 30, 50, 0.22), transparent 70%),
+    radial-gradient(60% 38% at 50% 100%, rgba(230, 30, 50, 0.22), transparent 70%);
+}
+
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* MapLibre: dark popups and controls in brand colours */
+.maplibregl-popup-content {
+  background: var(--surface) !important;
+  color: var(--fg);
+  border: 1px solid var(--border-strong);
+  border-radius: 16px !important;
+  padding: 0 !important;
+  overflow: hidden;
+  box-shadow: var(--shadow) !important;
+}
+.maplibregl-popup-tip {
+  border-top-color: var(--surface) !important;
+  border-bottom-color: var(--surface) !important;
+}
+.maplibregl-popup-close-button {
+  color: #fff;
+  font-size: 18px;
+  right: 6px !important;
+  top: 4px !important;
+  z-index: 2;
+}
+.maplibregl-ctrl-group {
+  background: var(--surface) !important;
+  border: 1px solid var(--border-strong);
+}
+.maplibregl-ctrl-group button + button {
+  border-top-color: var(--border) !important;
+}
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  filter: invert(1);
+}
+.maplibregl-ctrl-attrib {
+  background: rgba(0, 0, 0, 0.6) !important;
+  color: var(--fg-subtle);
+  font-size: 10px;
+}
+.maplibregl-ctrl-attrib a {
+  color: var(--fg-muted) !important;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-fade-up {
+  animation: fade-up 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* Text roll on hover (navigation): the label slides up and its copy slides in from below */
+.roll {
+  display: inline-block;
+  height: 1.25em;
+  overflow: hidden;
+  line-height: 1.25;
+  vertical-align: top;
+}
+.roll > span {
+  display: block;
+  transition: transform 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.roll > span > span {
+  display: block;
+}
+a:hover .roll > span,
+a:focus-visible .roll > span {
+  transform: translateY(-50%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .roll > span {
+    transition: none;
+  }
+}

@@ -1,0 +1,21 @@
+node_modules/
+dist/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+.env
+.env.*
+!.env.example
+
+.vercel/
+coverage/
+tests/e2e/.artifacts/
+.playwright-mcp/
+
+# Local media sources (stock footage, customer masters) — not part of the repo
+media-src/
+
+# Local editor/tool state
+.codebase-memory/
